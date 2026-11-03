@@ -1,0 +1,7 @@
+node_modules/
+build/
+renders/
+public/fonts/
+src/fonts.json
+src/timeline.json
+.DS_Store

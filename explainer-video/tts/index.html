@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<title>豆包语音合成 2.0 · 中英夹杂技术名词试听</title>
+<style>
+  :root { --bg:#0f1320; --card:#171c2e; --line:#2a3150; --fg:#e6e9f2; --dim:#8b93ad; --acc:#7aa2ff; --ok:#7ee0c3; --bad:#ff8caa; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:14px/1.6 -apple-system, "PingFang SC", sans-serif; background:var(--bg); color:var(--fg); }
+  main { max-width:1100px; margin:0 auto; padding:28px 24px 60px; }
+  h1 { font-size:22px; margin:0 0 4px; }
+  .sub { color:var(--dim); margin-bottom:20px; }
+  .grid { display:grid; grid-template-columns: 1fr 340px; gap:18px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:16px; }
+  h2 { font-size:14px; margin:0 0 10px; color:var(--dim); font-weight:600; }
+  .presets { display:flex; flex-direction:column; gap:6px; max-height:360px; overflow:auto; }
+  .presets button { text-align:left; background:#1d2338; color:var(--fg); border:1px solid var(--line); border-radius:8px; padding:8px 10px; cursor:pointer; font-size:13px; }
+  .presets button:hover { border-color:var(--acc); }
+  .presets b { color:var(--acc); font-weight:600; margin-right:6px; }
+  textarea, input, select { width:100%; background:#0d1120; color:var(--fg); border:1px solid var(--line); border-radius:8px; padding:9px 10px; font:inherit; }
+  textarea { min-height:120px; resize:vertical; }
+  label { display:block; margin:12px 0 6px; color:var(--dim); font-size:13px; }
+  .row { display:flex; gap:8px; align-items:center; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }
+  .chips span { font-size:12px; padding:3px 8px; border:1px solid var(--line); border-radius:999px; cursor:pointer; color:var(--dim); }
+  .chips span:hover { color:var(--fg); border-color:var(--acc); }
+  .voices { display:grid; grid-template-columns:1fr 1fr; gap:4px 10px; max-height:260px; overflow:auto; }
+  .voices label { margin:0; color:var(--fg); display:flex; gap:6px; align-items:center; font-size:13px; cursor:pointer; }
+  .voices input { width:auto; }
+  .btns { display:flex; gap:8px; margin-top:14px; }
+  .btn { flex:1; background:var(--acc); color:#0b1020; border:0; border-radius:8px; padding:10px; font-weight:700; cursor:pointer; }
+  .btn.ghost { background:transparent; color:var(--fg); border:1px solid var(--line); }
+  .btn:disabled { opacity:.5; cursor:wait; }
+  #history { margin-top:18px; display:flex; flex-direction:column; gap:10px; }
+  .item { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px 14px; }
+  .item .meta { display:flex; gap:10px; flex-wrap:wrap; color:var(--dim); font-size:12px; margin-bottom:6px; }
+  .item .meta .v { color:var(--ok); font-weight:600; }
+  .item .text { margin-bottom:8px; }
+  .item audio { width:100%; height:36px; }
+  .item.err { border-color:var(--bad); color:var(--bad); white-space:pre-wrap; font-size:12px; }
+  .item a { color:var(--acc); font-size:12px; }
+  .rate { display:flex; gap:10px; align-items:center; }
+  .rate input { flex:1; }
+  .rate output { width:56px; text-align:right; color:var(--dim); }
+</style>
+</head>
+<body>
+<main>
+  <h1>豆包语音合成 2.0 试听</h1>
+  <div class="sub">重点测中英夹杂、技术名词、数字单位、命令行。左侧选句子或自己写，右侧可勾选多个音色一次性对比。</div>
+
+  <div class="grid">
+    <section class="card">
+      <h2>预置测试句（点击填入）</h2>
+      <div class="presets" id="presets"></div>
+
+      <label>待合成文本</label>
+      <textarea id="text"></textarea>
+
+      <label>语音指令（可选，仅 2.0 音色生效，不计费）</label>
+      <input id="context" placeholder="例如：用自然、清晰、像技术分享一样的语气讲解" />
+      <div class="chips" id="ctxChips"></div>
+
+      <label>语速</label>
+      <div class="rate"><input id="rate" type="range" min="-50" max="100" step="5" value="0" /><output id="rateOut">1.00x</output></div>
+    </section>
+
+    <section class="card">
+      <h2>音色（可多选）</h2>
+      <div class="voices" id="voices"></div>
+      <label>自定义音色 ID（可选，逗号分隔）</label>
+      <input id="custom" placeholder="xxx_uranus_bigtts" />
+      <div class="btns">
+        <button class="btn" id="go">合成并播放</button>
+        <button class="btn ghost" id="clear">清空记录</button>
+      </div>
+    </section>
+  </div>
+
+  <div id="history"></div>
+</main>
+
+<script>
+const PRESETS = [
+  ['云原生', '我们用 Kubernetes 部署了一个 gRPC 服务，通过 Envoy sidecar 做 mTLS，QPS 峰值大概 3.5k，P99 latency 控制在 120ms 以内。'],
+  ['前端', '这个 PR 把 useEffect 里的 fetch 改成了 React Query 的 useQuery，顺便修了一个 race condition，Lighthouse 分数从 72 涨到 95。'],
+  ['Agent', 'AgentServer 通过 JSON-RPC 暴露 thread/start 和 turn/start，底层 runtime 可以是 Claude Code、Codex 或者 Gemini CLI，前端用 React 渲染。'],
+  ['命令行', '先跑 pnpm install，再执行 pnpm --filter web exec vitest run，CI 在 GitHub Actions 上大概要 8 分钟。'],
+  ['路由', 'Auto Router 用 LLM classifier 配合 rubric 打分，把任务分成 easy 和 hard，再在负载低于 0.85 的模型里按 priority 选一个。'],
+  ['数据库', '我们把 Redis 的 TTL 设成 300 秒，cache hit rate 从 62% 提到了 91%，同时 PostgreSQL 的 CPU usage 降了一半。'],
+  ['模型名', 'GPT-5、Claude Opus 4.5 和 Gemini 3 Pro 在 SWE-bench Verified 上的差距已经不到 5 个点，Qwen3-Coder 也追得很紧。'],
+  ['IDE', '打开 VS Code，按 Cmd+Shift+P 搜索 TypeScript: Restart TS Server，然后检查 tsconfig.json 里的 strictNullChecks 是不是 true。'],
+  ['消息队列', 'Kafka consumer group 发生 rebalance 的时候，如果 offset commit 失败，在 at-least-once 语义下就会出现重复消费。'],
+  ['网络', 'WebSocket 断线后用 exponential backoff 重连，最大间隔 30s，heartbeat 每 15 秒发一次，超过 3 次没有 pong 就判定连接失效。'],
+  ['缩写', 'SDK、API、CLI、MR、PR、CI/CD、OOM、SLA、TPM、RPM 这些缩写，模型能不能逐个字母读对？'],
+  ['长句', '首轮 Router 失败或者返回非法结果时，server 会在本地 fallback 到一个 default model 或者 queue 不超过 50 的模型，并把 degrade_reason 写进 observability event 里上报。'],
+]
+const CONTEXTS = ['用自然、清晰、像技术分享一样的语气讲解', '你可以说慢一点吗？', '语气再轻松活泼一点', '像在给同事做 code review 一样说']
+const VOICES = [
+  ['zh_female_vv_uranus_bigtts', 'Vivi'], ['zh_female_xiaohe_uranus_bigtts', '小何'],
+  ['zh_male_m191_uranus_bigtts', '云舟'], ['zh_male_taocheng_uranus_bigtts', '小天'],
+  ['zh_male_liufei_uranus_bigtts', '刘飞'], ['zh_male_ruyayichen_uranus_bigtts', '儒雅逸辰'],
+  ['zh_male_dayi_uranus_bigtts', '大壹'], ['zh_male_qingcang_uranus_bigtts', '擎苍'],
+  ['zh_female_cancan_uranus_bigtts', '知性灿灿'], ['zh_female_qingxinnvsheng_uranus_bigtts', '清新女声'],
+  ['zh_female_liuchangnv_uranus_bigtts', '流畅女声'], ['zh_female_shuangkuaisisi_uranus_bigtts', '爽快思思'],
+  ['zh_female_yingyujiaoxue_uranus_bigtts', 'Tina 老师'], ['zh_female_kefunvsheng_uranus_bigtts', '暖阳女声'],
+  ['en_male_tim_uranus_bigtts', 'Tim（英）'], ['en_female_dacey_uranus_bigtts', 'Dacey（英）'],
+]
+const $ = (id) => document.getElementById(id)
+const nameOf = Object.fromEntries(VOICES)
+
+$('presets').innerHTML = PRESETS.map(([t, s], i) => `<button data-i="${i}"><b>${t}</b>${s}</button>`).join('')
+$('presets').onclick = (e) => { const b = e.target.closest('button'); if (b) $('text').value = PRESETS[b.dataset.i][1] }
+$('text').value = PRESETS[0][1]
+$('ctxChips').innerHTML = CONTEXTS.map((c) => `<span>${c}</span>`).join('')
+$('ctxChips').onclick = (e) => { if (e.target.tagName === 'SPAN') $('context').value = e.target.textContent }
+$('voices').innerHTML = VOICES.map(([id, n], i) => `<label><input type="checkbox" value="${id}" ${i < 3 ? 'checked' : ''}/>${n}</label>`).join('')
+$('rate').oninput = () => { $('rateOut').textContent = (1 + $('rate').value / 100).toFixed(2) + 'x' }
+$('clear').onclick = () => { $('history').innerHTML = '' }
+
+const esc = (s) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]))
+
+async function one(speaker, text, context, speechRate) {
+  const el = document.createElement('div')
+  el.className = 'item'
+  el.innerHTML = `<div class="meta"><span class="v">${esc(nameOf[speaker] || speaker)}</span><span>合成中…</span></div><div class="text">${esc(text)}</div>`
+  $('history').prepend(el)
+  const res = await fetch('/api/tts', { method: 'POST', body: JSON.stringify({ text, speaker, context, speechRate }) })
+  if (!res.ok) {
+    el.className = 'item err'
+    el.textContent = `${nameOf[speaker] || speaker}：${await res.text()}`
+    return null
+  }
+  const url = URL.createObjectURL(await res.blob())
+  const meta = [`<span class="v">${esc(nameOf[speaker] || speaker)}</span>`, `<span>${res.headers.get('X-Latency-Ms')}ms</span>`]
+  if (context) meta.push(`<span>指令：${esc(context)}</span>`)
+  if (+speechRate) meta.push(`<span>语速 ${(1 + speechRate / 100).toFixed(2)}x</span>`)
+  meta.push(`<a href="${url}" download="${speaker}.mp3">下载</a>`)
+  el.innerHTML = `<div class="meta">${meta.join('')}</div><div class="text">${esc(text)}</div><audio controls src="${url}"></audio>`
+  return el.querySelector('audio')
+}
+
+$('go').onclick = async () => {
+  const text = $('text').value.trim()
+  if (!text) return
+  const speakers = [...document.querySelectorAll('#voices input:checked')].map((i) => i.value)
+    .concat($('custom').value.split(',').map((s) => s.trim()).filter(Boolean))
+  if (!speakers.length) return alert('至少选一个音色')
+  $('go').disabled = true
+  const audios = await Promise.all(speakers.map((s) => one(s, text, $('context').value.trim(), $('rate').value)))
+  $('go').disabled = false
+  const list = audios.filter(Boolean).reverse()
+  list.forEach((a, i) => { a.onended = () => list[i + 1]?.play() })
+  list[0]?.play()
+}
+</script>
+</body>
+</html>
