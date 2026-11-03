@@ -2,7 +2,8 @@
 name: explainer-video
 description: >-
   Produces animated explainer videos (MP4, landscape 1920×1080 or portrait 1080×1920) for a feature,
-  algorithm, architecture or mechanism: narration script → Doubao TTS 2.0 voice with word timestamps →
+  algorithm, architecture or mechanism: narration script → Doubao TTS 2.0 voice with word timestamps (or a
+  no-voice version paced for reading, when there is no TTS key) →
   Revideo scenes (responsive layout, hand-drawn Excalidraw-style sketches, Gruvbox palette) → MP4 with
   burned-in + soft subtitles, a QA report and a contact sheet. Use when the user asks for an explainer /
   讲解视频 / 科普动画 / 3b1b 风格视频 / 竖屏短视频 / 分镜脚本, or iterates on such a video's script,
@@ -16,6 +17,7 @@ description: >-
 ## 硬约束
 
 - **TTS key 不写进任何文件、提交或输出**，用户在对话里贴了 key，提醒其轮换。key 的存放和读取见 [setup.md](setup.md)。
+- **没有豆包 key 时不卡住**：先问用户要不要配置 key；用户没有或不想配，就做无配音版本（见「3. 配音和时间轴」的「无配音模式」），不要因为缺 key 停下。
 - 每支片子一个独立目录：用户指定了位置就用用户的，否则用当前工作目录下的 `videos/<slug>/`。产物（mp4、png、build/）不放进任何代码仓库。
 - **片子之间互相隔离**：只读写当前片子的目录。不要打开、引用或改动 `videos/` 下别的片子；新片子一律从 `$SKILL/template/` 起步，不从旧片子复制。迭代已有片子时沿用原目录，递增版本号。
 - 成片、接触表、封面、`.srt` 都输出到当前片子的 `renders/`，不要写到父目录。
@@ -66,6 +68,19 @@ node narrate.mjs --size 1920x1080   # 临时换画幅（字幕换行宽度跟着
 - 字幕断得别扭时，改写那句旁白，或用 `sub` 手动调整。
 - 有缓存：只改画面不会重新合成；改了任何一句旁白，整篇会重新合成（同一个请求），整片的语气和停顿都会和上一版不同，交付时提醒用户整片重听。`--redo <beatId>` 同理会重做它所在的整个请求。
 - 挑音色：`node $SKILL/tts/server.mjs`（http://127.0.0.1:8765 试听），或 `RATE=20 node $SKILL/tts/batch.mjs <speaker>` 批量出样本。加速一律用 `rate`（不变调）。
+
+### 无配音模式（没有豆包 key）
+
+```bash
+node narrate.mjs --no-voice          # 或在 script.json 里写 "voice": "none"
+```
+
+不调用 TTS，也不需要 key。每句按阅读速度排时间（默认每秒 5.5 个字，`script.json` 的 `"readRate"` 可改；逗号、句号处略停，每句至少 1.2 秒），逐字时间按同样的速度推出来，所以 `cue.on('beatId', '某个字')` 照常可用。`build/narration.wav` 是一段等长的静音，后面的 `render.mjs`、`bgm.mjs` 不用改。
+
+- 这时**字幕就是旁白**：必须烧硬字幕，不要加 `--no-burn-subs`。旁白照常写成完整的句子，但要更短、更好读；`sub` 仍可用来把数字写成阿拉伯数字。
+- 画面更要「用图形讲」：观众要一边读字幕一边看图，图不能再塞文字。
+- 建议配上背景音乐，否则整片无声。`bgm.mjs` 发现视频里没有人声时，把音乐当主音轨放到 `--level`（默认 -20 LUFS）。
+- 交付时说明这是无配音版本；以后有了 key，只需去掉 `--no-voice` 重跑 `narrate.mjs` 和 `render.mjs`，场景代码不用改（动画会自动对齐到真实配音的时间）。
 
 ## 4. 设计画面，写 `src/scenes.tsx`
 

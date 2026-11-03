@@ -2,6 +2,7 @@
 //   node bgm.mjs renders/name-v1.mp4 music/track.mp3 --out renders/name-v1-bgm.mp4
 //   --under 30     dB the bed sits below the voice while someone speaks (default 30)
 //   --credit "…"   attribution line for a CC BY track; written next to the output as <out>-credits.txt
+//   --level -20    LUFS of the music for a video without narration (narrate.mjs --no-voice); default -20
 // The music is EQ'd out of the voice band, looped with a crossfade when it is shorter than the video,
 // calibrated against the measured voice loudness, ducked a little more under speech (sidechain) and
 // faded in and out. Video and subtitle streams are copied untouched.
@@ -23,6 +24,7 @@ const opt = (name, fallback) => {
   return i >= 0 ? args.splice(i, 2)[1] : fallback
 }
 const UNDER = Number(opt('--under', 30))
+const LEVEL = Number(opt('--level', -20))
 const CREDIT = opt('--credit')
 const [VIDEO, MUSIC] = args
 if (!VIDEO || !MUSIC) throw new Error('usage: node bgm.mjs <video.mp4> <music> [--out out.mp4] [--under 30] [--credit "…"]')
@@ -66,7 +68,9 @@ const measureBed = (gain) => {
   return lufs('build/bgm-bed.wav', 3, V - 3)
 }
 const voiceLufs = lufs(VIDEO, 3, V - 3)
-const gain = +(voiceLufs - UNDER - measureBed(0)).toFixed(1)
+// A no-voice video has a silent track (≈ −70 LUFS): the music is then the soundtrack, set to --level.
+const silent = !(voiceLufs > -60)
+const gain = +((silent ? LEVEL : voiceLufs - UNDER) - measureBed(0)).toFixed(1)
 
 run(FFMPEG, ['-v', 'error', '-y', '-i', VIDEO, '-i', bed, '-filter_complex',
   `[1:a]${prep(gain)},afade=t=in:d=${FADE_IN},afade=t=out:st=${(V - FADE_OUT).toFixed(2)}:d=${FADE_OUT}[m];` +
@@ -75,7 +79,9 @@ run(FFMPEG, ['-v', 'error', '-y', '-i', VIDEO, '-i', bed, '-filter_complex',
   '-movflags', '+faststart', OUT])
 
 const bedLufs = measureBed(gain)
-console.log(`bgm: voice ${voiceLufs} LUFS, bed ${bedLufs} LUFS under speech (${(voiceLufs - bedLufs).toFixed(1)} dB below), music gain ${gain} dB`)
+console.log(silent
+  ? `bgm: no narration in the video; music at ${bedLufs} LUFS (--level ${LEVEL}), gain ${gain} dB`
+  : `bgm: voice ${voiceLufs} LUFS, bed ${bedLufs} LUFS under speech (${(voiceLufs - bedLufs).toFixed(1)} dB below), music gain ${gain} dB`)
 console.log(`bgm: mix ${lufs(OUT)} LUFS → ${OUT}`)
 if (CREDIT) {
   writeFileSync(OUT.replace(/\.mp4$/, '-credits.txt'), CREDIT + '\n')
