@@ -2,7 +2,7 @@
 
 ## TTS key
 
-`narrate.mjs` 和 `tts/server.mjs` 优先读环境变量 `DOUBAO_API_KEY`，没有就从 macOS 钥匙串取（条目名 `doubao-tts-api-key`），命令里不用带 key。
+`narrate.mjs` 和 `tts/server.mjs` 优先读环境变量 `DOUBAO_API_KEY`，没有就从 macOS 钥匙串取（条目名 `doubao-tts-api-key`），命令里不用带 key。没有 key 时可以用 `node narrate.mjs --no-voice` 做无配音版本（见 SKILL.md「无配音模式」）。
 
 - 检查是否已存：`security find-generic-password -s doubao-tts-api-key >/dev/null && echo ok`。
 - 没存时，让用户自己在终端执行 `security add-generic-password -U -a "$USER" -s doubao-tts-api-key -w`（交互输入，key 不会进 shell 历史）。

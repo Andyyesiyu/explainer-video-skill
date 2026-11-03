@@ -7,6 +7,7 @@ An agent skill that turns a narration script into a hand-drawn (Excalidraw-style
 ## 能做什么
 
 - 旁白脚本 → 豆包语音合成 2.0 配音（整篇一次合成，带逐字时间戳），动画按「念到哪个字」触发
+- 没有 TTS key 也能用：`--no-voice` 按阅读速度排时间，字幕代替旁白，可配背景音乐
 - 手绘风格图形（roughjs）、Excalifont / 小赖手写字体、按角色命名的调色板
 - 横屏 1920×1080 / 竖屏 1080×1920 共用一套场景代码
 - 硬字幕 + 软字幕 + `.srt`，封面图，前 5 秒画面条，每句一帧的接触表
@@ -29,7 +30,7 @@ explainer-video/
 
 - Node.js 22+、ffmpeg
 - Playwright 的 `chromium-headless-shell`（`npx playwright install chromium-headless-shell`）
-- 火山引擎豆包语音合成 2.0 的 API key，放在环境变量 `DOUBAO_API_KEY`（macOS 也可以存进钥匙串，见 [setup.md](explainer-video/setup.md)）。key 不要写进任何文件。
+- 可选：火山引擎豆包语音合成 2.0 的 API key，放在环境变量 `DOUBAO_API_KEY`（macOS 也可以存进钥匙串，见 [setup.md](explainer-video/setup.md)）。key 不要写进任何文件。没有 key 时用无配音模式。
 
 ## 安装 skill
 
@@ -42,7 +43,7 @@ explainer-video/
 ```bash
 cp -R explainer-video/template /tmp/demo && cd /tmp/demo
 npm install && node setup.mjs        # setup 下载手写字体（OFL）到 public/fonts
-node narrate.mjs                     # 需要 DOUBAO_API_KEY
+node narrate.mjs                     # 需要 DOUBAO_API_KEY；没有就用 node narrate.mjs --no-voice
 node render.mjs --out renders/demo.mp4
 ```
 

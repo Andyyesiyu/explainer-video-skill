@@ -2,6 +2,9 @@
 //   node narrate.mjs                 uses script.json's size
 //   node narrate.mjs --size 1080x1920
 //   node narrate.mjs --requests 2       start from 2 requests instead of 1 (split at scene boundaries)
+//   node narrate.mjs --no-voice         no TTS (no key needed): lines are timed at a reading pace, the
+//                                       narration track is silence and the captions carry the words.
+//                                       Same as "voice": "none" in script.json.
 // Key: DOUBAO_API_KEY, else macOS Keychain item `doubao-tts-api-key`. Clips are cached in build/audio
 // by hash of voice + rate + context + text. The whole script goes out as ONE request so intonation carries
 // across sentences and scenes, and that clip is played whole; lines and scenes are only time marks in it.
@@ -20,6 +23,11 @@ const SIZE = arg('--size', S.size ?? '1920x1080')
 const [W, H] = SIZE.split('x').map(Number)
 const VOICE = S.voice ?? 'zh_female_xiaohe_uranus_bigtts'
 const RATE = S.rate ?? 20
+// No-voice mode: nothing is synthesised. Each line lasts as long as it takes to read its caption at
+// READ_CPS characters per second (script.json "readRate" overrides), plus a short pause at punctuation,
+// and never less than MIN_LINE seconds.
+const NO_VOICE = process.argv.includes('--no-voice') || S.voice === 'none'
+const READ_CPS = S.readRate ?? 5.5, MIN_LINE = 1.2, COMMA = 0.15, STOP = 0.3
 // `--redo id1,id2`: synthesise the runs containing these beats again, ignoring the cache.
 const REDO = arg('--redo', '').split(',').filter(Boolean)
 // Extra takes tried when a run is flagged by audioIssues.
@@ -50,7 +58,7 @@ function doubaoKey() {
   try {
     apiKey = execFileSync('security', ['find-generic-password', '-s', 'doubao-tts-api-key', '-w'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
   } catch {
-    throw new Error('缺少豆包 key：设置 DOUBAO_API_KEY，或存入钥匙串 security add-generic-password -U -a "$USER" -s doubao-tts-api-key -w')
+    throw new Error('缺少豆包 key：设置 DOUBAO_API_KEY，或存入钥匙串 security add-generic-password -U -a "$USER" -s doubao-tts-api-key -w；没有 key 时用 node narrate.mjs --no-voice 生成无配音版本')
   }
   return apiKey
 }
@@ -280,6 +288,31 @@ function markRun(run, n, a, segs) {
   })
 }
 
+// No-voice stand-in for synth(): word times from reading pace, no audio. A CJK character takes one
+// unit, a Latin word or number about half a unit per letter (at least one), punctuation adds a pause.
+function readRun(run) {
+  let t = 0
+  const parts = run.map((b) => {
+    const from = t, words = []
+    let s = 0
+    // A Latin word or number is one token (0.47, GPT-5, 3.5k); any other letter (a CJK character) is one.
+    for (const tok of b.say.match(/[A-Za-z0-9\u00C0-\u024F][A-Za-z0-9\u00C0-\u024F.%+\-]*|./gu) ?? []) {
+      if (/^[\p{L}\p{N}]/u.test(tok)) {
+        const units = tok.length === 1 && !ascii(tok) ? 1 : Math.max(1, width(tok) * 0.9)
+        const d = units / READ_CPS
+        words.push({ w: tok, s, e: s + d })
+        s += d
+      } else if (/[，、；：,;:]/.test(tok)) s += COMMA
+      else if (/[。！？.!?]/.test(tok)) s += STOP
+      else if (words.length) words.at(-1).w += tok
+    }
+    const dur = Math.max(MIN_LINE, s + STOP)
+    t += dur
+    return { b, from, to: t, words }
+  })
+  return { file: null, segs: [[0, t]], parts }
+}
+
 // Synthesises a run as one request and plays it whole. A take with a glitch is thrown away and the run
 // is synthesised again as a whole (the model is not deterministic); the take with the fewest issues wins.
 async function synth(run) {
@@ -330,10 +363,10 @@ for (let k = Number(arg('--requests', 1)); ; k++) {
           cursor += dur + GAP + (b.pause ?? 0)
           continue
         }
-        const { file, segs, parts } = await synth(run)
+        const { file, segs, parts } = NO_VOICE ? readRun(run) : await synth(run)
         let clipLen = 0
         for (const [from, to] of segs) {
-          clips.push({ file, from, to, abs: cursor + clipLen })
+          if (file) clips.push({ file, from, to, abs: cursor + clipLen })
           clipLen += to - from
         }
         for (const { b, from, to, words } of parts) {
@@ -367,7 +400,7 @@ for (let k = Number(arg('--requests', 1)); ; k++) {
     const start = starts[si], end = starts[si + 1] ?? t
     return { id: sc.id, start, end, beats: beatsOf[si].map(({ abs, ...b }) => ({ ...b, start: abs - start })) }
   })
-  console.log(`tts: ${k} request(s)`)
+  if (!NO_VOICE) console.log(`tts: ${k} request(s)`)
   break
 }
 // Hold each caption until the next one (same line) or briefly after it ends.
@@ -377,12 +410,17 @@ for (const [i, c] of captions.entries()) {
 }
 
 const total = t
-const ffmpegArgs = ['-y', '-v', 'error']
-for (const c of clips) ffmpegArgs.push('-i', c.file)
-const filter = clips.map((c, i) => `[${i}:a]atrim=start=${c.from.toFixed(3)}:end=${c.to.toFixed(3)},asetpts=PTS-STARTPTS,aresample=48000,adelay=${Math.round(c.abs * 1000)}:all=1[a${i}]`).join(';') +
-  `;${clips.map((_, i) => `[a${i}]`).join('')}amix=inputs=${clips.length}:normalize=0:duration=longest,` +
-  `loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000,apad,atrim=0:${total.toFixed(3)}[out]`
-execFileSync('ffmpeg', [...ffmpegArgs, '-filter_complex', filter, '-map', '[out]', '-ac', '2', 'build/narration.wav'])
+if (!clips.length) {
+  // No voice: a silent track of the right length, so render.mjs and bgm.mjs work unchanged.
+  execFileSync('ffmpeg', ['-y', '-v', 'error', '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo', '-t', total.toFixed(3), 'build/narration.wav'])
+} else {
+  const ffmpegArgs = ['-y', '-v', 'error']
+  for (const c of clips) ffmpegArgs.push('-i', c.file)
+  const filter = clips.map((c, i) => `[${i}:a]atrim=start=${c.from.toFixed(3)}:end=${c.to.toFixed(3)},asetpts=PTS-STARTPTS,aresample=48000,adelay=${Math.round(c.abs * 1000)}:all=1[a${i}]`).join(';') +
+    `;${clips.map((_, i) => `[a${i}]`).join('')}amix=inputs=${clips.length}:normalize=0:duration=longest,` +
+    `loudnorm=I=-16:TP=-1.5:LRA=11,aresample=48000,apad,atrim=0:${total.toFixed(3)}[out]`
+  execFileSync('ffmpeg', [...ffmpegArgs, '-filter_complex', filter, '-map', '[out]', '-ac', '2', 'build/narration.wav'])
+}
 
 const srtTime = (x) => {
   const ms = Math.round(x * 1000)
@@ -392,8 +430,8 @@ const srtTime = (x) => {
 writeFileSync('build/captions.srt', captions.map((c, i) => `${i + 1}\n${srtTime(c.s)} --> ${srtTime(c.e)}\n${c.text}\n`).join('\n'))
 
 const scriptHash = createHash('sha1').update(scriptText).digest('hex').slice(0, 12)
-writeFileSync('src/timeline.json', JSON.stringify({ scriptHash, size: [W, H], total, scenes, captions }, null, 1))
-console.log(`timeline: ${scenes.length} scenes, ${total.toFixed(1)}s at ${W}x${H} → src/timeline.json, build/narration.wav`)
+writeFileSync('src/timeline.json', JSON.stringify({ scriptHash, size: [W, H], total, voice: !NO_VOICE, scenes, captions }, null, 1))
+console.log(`timeline: ${scenes.length} scenes, ${total.toFixed(1)}s at ${W}x${H}${NO_VOICE ? ' (no voice, reading pace)' : ''} → src/timeline.json, build/narration.wav`)
 writeFileSync('build/audio-qa.json', JSON.stringify(audioQa, null, 1))
 console.log(audioQa.length
   ? `\nAUDIO QA: still flagged after ${RETAKES} retakes (listen; --redo <beatId> for a fresh take):\n${audioQa.map((s) => `  ${s}`).join('\n')}`
