@@ -36,7 +36,7 @@ explainer-video/
 
 把 `explainer-video/` 复制（或软链接）到 agent 的 skills 目录，例如 Claude Code 的 `~/.claude/skills/explainer-video`，然后对 agent 说「帮我做一个讲解 xxx 的竖屏视频」。
 
-第一次使用时，agent 会问你的账号名和片尾文案，用来替换模板里的示例品牌（`403-error` 是作者自己的频道）。
+第一次使用时，agent 会先确认语音：找不到豆包 key 就问你是否提供（不会拿系统自带的机械语音凑数），没有的话可以先出无配音版本。它也会问你的账号名和片尾文案，用来替换模板里的示例品牌（`403-error` 是作者自己的频道）。
 
 ## 手动跑一遍模板演示
 

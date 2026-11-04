@@ -58,7 +58,7 @@ function doubaoKey() {
   try {
     apiKey = execFileSync('security', ['find-generic-password', '-s', 'doubao-tts-api-key', '-w'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim()
   } catch {
-    throw new Error('缺少豆包 key：设置 DOUBAO_API_KEY，或存入钥匙串 security add-generic-password -U -a "$USER" -s doubao-tts-api-key -w；没有 key 时用 node narrate.mjs --no-voice 生成无配音版本')
+    throw new Error('缺少豆包 key：设置 DOUBAO_API_KEY，或存入钥匙串 security add-generic-password -U -a "$USER" -s doubao-tts-api-key -w；没有 key 时用 node narrate.mjs --no-voice 生成无配音版本，不要换成系统自带语音')
   }
   return apiKey
 }

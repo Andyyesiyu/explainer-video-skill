@@ -4,9 +4,11 @@
 
 `narrate.mjs` 和 `tts/server.mjs` 优先读环境变量 `DOUBAO_API_KEY`，没有就从 macOS 钥匙串取（条目名 `doubao-tts-api-key`），命令里不用带 key。没有 key 时可以用 `node narrate.mjs --no-voice` 做无配音版本（见 SKILL.md「无配音模式」）。
 
-- 检查是否已存：`security find-generic-password -s doubao-tts-api-key >/dev/null && echo ok`。
+- 怎么获取：在火山引擎开通豆包语音合成 2.0，拿到 API key（请求头里的 `X-Api-Key`，资源 ID 是 `seed-tts-2.0`，接口细节见 reference.md）。
+- 检查是否已存：`[ -n "$DOUBAO_API_KEY" ] && echo env`，或 macOS 上 `security find-generic-password -s doubao-tts-api-key >/dev/null && echo ok`。
 - 没存时，让用户自己在终端执行 `security add-generic-password -U -a "$USER" -s doubao-tts-api-key -w`（交互输入，key 不会进 shell 历史）。
 - key 不写进任何文件、skill、文档、提交或 shell 配置，也不要回显到输出里。
+- 没有 key 时不要退回系统自带语音（`say`、espeak 等），用无配音模式或请用户提供其他高质量 TTS，见 SKILL.md「第一次使用：先配好语音」。
 
 ## 建片子目录
 
